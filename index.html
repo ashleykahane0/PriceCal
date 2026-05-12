@@ -748,31 +748,45 @@ function renderPreview() {
 
 function exportResult() {
   if (!calcRows.length) { toast('Nothing to export', true); return; }
-  var calcLabels = { '_MAP_UMRP':'MAP_UMRP','_L1':'L1','_L2':'L2','_L3':'L3','_L4':'L4','_COST':'COST','_L3_COST':'L3_COST','_PREF':'PREF','_PREF_COST':'PREF_COST','_SPIFF':'SPIFF_RATE','_SPIFF_AMT':'SPIFF_AMOUNT' };
-  var origCols = sheetCols.filter(function(c) { return !Object.keys(calcLabels).includes(c); });
-  var outputRows = calcRows.map(function(row) {
-    var out = {};
-    origCols.forEach(function(c) { out[c] = row[c] != null ? row[c] : ''; });
-    Object.keys(calcLabels).forEach(function(k) {
-      var label = calcLabels[k];
-      out[label] = (k === '_SPIFF') ? (row[k] != null ? row[k] : '') : (row[k] != null ? Number(row[k].toFixed(4)) : '');
+  try {
+    var calcLabels = { '_MAP_UMRP':'MAP_UMRP','_L1':'L1','_L2':'L2','_L3':'L3','_L4':'L4','_COST':'COST','_L3_COST':'L3_COST','_PREF':'PREF','_PREF_COST':'PREF_COST','_SPIFF':'SPIFF_RATE','_SPIFF_AMT':'SPIFF_AMOUNT' };
+    var origCols = sheetCols.filter(function(c) { return !Object.keys(calcLabels).includes(c); });
+    var outputRows = calcRows.map(function(row) {
+      var out = {};
+      origCols.forEach(function(c) { out[c] = row[c] != null ? row[c] : ''; });
+      Object.keys(calcLabels).forEach(function(k) {
+        var label = calcLabels[k];
+        out[label] = (k === '_SPIFF') ? (row[k] != null ? row[k] : '') : (row[k] != null ? Number(row[k].toFixed(4)) : '');
+      });
+      return out;
     });
-    return out;
-  });
-  var ws = XLSX.utils.json_to_sheet(outputRows);
-  ws['!cols'] = Object.keys(outputRows[0]).map(function(h) { return { wch: Math.max(h.length, 12) }; });
-  var wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, procBrand || 'Prices');
-  var br = rules[procBrand] || {};
-  var summaryData = [['Brand', procBrand], ['Processed', new Date().toLocaleString()], ['Rows', calcRows.length], ['',''], ['FIELD','RULE']].concat(
-    FIELDS.filter(function(f) { return f.key !== 'notes'; }).map(function(f) { return [f.label, br[f.key] != null ? String(br[f.key]) : '\u2014']; }),
-    [['',''], ['Notes', br.notes || '']]
-  );
-  var wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-  wsSummary['!cols'] = [{ wch: 18 }, { wch: 40 }];
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'Rules Used');
-  XLSX.writeFile(wb, procBrand + '_priced_' + new Date().toISOString().slice(0, 10) + '.xlsx');
-  toast('Exported ' + calcRows.length + ' rows for ' + procBrand);
+    var ws = XLSX.utils.json_to_sheet(outputRows);
+    ws['!cols'] = Object.keys(outputRows[0]).map(function(h) { return { wch: Math.max(h.length, 12) }; });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, procBrand || 'Prices');
+    var br = rules[procBrand] || {};
+    var summaryData = [['Brand', procBrand], ['Processed', new Date().toLocaleString()], ['Rows', calcRows.length], ['',''], ['FIELD','RULE']].concat(
+      FIELDS.filter(function(f) { return f.key !== 'notes'; }).map(function(f) { return [f.label, br[f.key] != null ? String(br[f.key]) : '\u2014']; }),
+      [['',''], ['Notes', br.notes || '']]
+    );
+    var wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    wsSummary['!cols'] = [{ wch: 18 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Rules Used');
+    var fname = procBrand + '_priced_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    // Use blob + anchor for broader browser/host compatibility
+    var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    var blob = new Blob([wbout], { type: 'application/octet-stream' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+    toast('Exported ' + calcRows.length + ' rows for ' + procBrand);
+  } catch(e) {
+    toast('Export failed: ' + e.message, true);
+  }
 }
 
 // ── Toast ─────────────────────────────────────────────────
