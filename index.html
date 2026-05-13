@@ -270,7 +270,7 @@ var JBURL    = 'https://api.jsonbin.io/v3';
 var POLL_MS  = 30000;
 
 // ── Baked-in shared credentials (no setup needed for teammates) ───
-var BAKED_KEY = '$2a$10$7YdOrT8gmP4Opzjg0MSvkeflSbJluxCKZ3iPLo3aT4GmyD3jzGtHy';
+var BAKED_KEY = '$2a$10$4/aJeKABKmH1yPhX2zVXkuNuMNRJq3aMRJbpgZa7jpG5qC7mjMNzO';
 var BAKED_BIN = '6a03527bc0954111d8126950';
 
 // ── State ─────────────────────────────────────────────────
@@ -327,8 +327,10 @@ function showErr(msg) {
 }
 
 function resetSetup() {
-  if (confirm('Clear local cache and reload fresh data from the cloud?')) {
+  if (confirm('Clear all cached data and reconnect to the cloud?\n\nThis will re-fetch all rules fresh from the server.')) {
     localStorage.removeItem(LS_CACHE);
+    localStorage.removeItem('fuse-jb-key');
+    localStorage.removeItem('fuse-jb-bin');
     location.reload();
   }
 }
@@ -342,10 +344,15 @@ function setSyncState(state, label) {
 }
 
 function loadFromCloud() {
-  if (!binId || !apiKey) return;
+  if (!binId || !apiKey) { setSyncState('err', 'No credentials'); return; }
   setSyncState('syncing', 'Syncing…');
+  document.getElementById('sync-label').textContent = 'Trying ' + JBURL + '/b/' + binId.slice(0,8) + '…';
   fetch(JBURL + '/b/' + binId + '/latest', { headers: { 'X-Master-Key': apiKey } })
-  .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(function(r) {
+    document.getElementById('sync-label').textContent = 'HTTP ' + r.status;
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  })
   .then(function(data) {
     rules     = data.record.rules     || JSON.parse(JSON.stringify(DEFAULT_RULES));
     changelog = data.record.changelog || [];
@@ -355,13 +362,46 @@ function loadFromCloud() {
     if (!pollTimer) pollTimer = setInterval(loadFromCloud, POLL_MS);
   })
   .catch(function(e) {
-    try {
-      var c = JSON.parse(localStorage.getItem(LS_CACHE) || 'null');
-      if (c) { rules = c.rules; changelog = c.changelog; }
-      else   { rules = JSON.parse(JSON.stringify(DEFAULT_RULES)); changelog = []; }
-    } catch(e2) { rules = JSON.parse(JSON.stringify(DEFAULT_RULES)); changelog = []; }
-    setSyncState('err', 'Offline \u2013 cached');
-    render();
+    // If unauthorized, the bin may need to be recreated with the new key
+    if (String(e.message) === '401' || String(e.message) === '403' || String(e.message) === '404') {
+      setSyncState('syncing', 'Reconnecting…');
+      // Create a fresh bin with the current key
+      var cached = null;
+      try { cached = JSON.parse(localStorage.getItem(LS_CACHE) || 'null'); } catch(e2) {}
+      var payload = cached || { rules: JSON.parse(JSON.stringify(DEFAULT_RULES)), changelog: [] };
+      fetch(JBURL + '/b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Master-Key': apiKey, 'X-Bin-Name': 'fuse-pricing-rules', 'X-Bin-Private': 'false' },
+        body: JSON.stringify(payload)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.metadata && data.metadata.id) {
+          binId = data.metadata.id;
+          BAKED_BIN = binId;
+          rules = payload.rules || JSON.parse(JSON.stringify(DEFAULT_RULES));
+          changelog = payload.changelog || [];
+          localStorage.setItem(LS_CACHE, JSON.stringify({ rules: rules, changelog: changelog }));
+          setSyncState('live', 'Live \xb7 ' + new Date().toLocaleTimeString());
+          alert('Reconnected! New Bin ID: ' + binId + '\n\nShare this with teammates.');
+          render();
+          if (!pollTimer) pollTimer = setInterval(loadFromCloud, POLL_MS);
+        }
+      })
+      .catch(function() {
+        setSyncState('err', 'Connection failed \u2013 check key');
+        rules = JSON.parse(JSON.stringify(DEFAULT_RULES)); changelog = [];
+        render();
+      });
+    } else {
+      try {
+        var c = JSON.parse(localStorage.getItem(LS_CACHE) || 'null');
+        if (c) { rules = c.rules; changelog = c.changelog; }
+        else   { rules = JSON.parse(JSON.stringify(DEFAULT_RULES)); changelog = []; }
+      } catch(e2) { rules = JSON.parse(JSON.stringify(DEFAULT_RULES)); changelog = []; }
+      setSyncState('err', 'Offline \u2013 cached');
+      render();
+    }
   });
 }
 
