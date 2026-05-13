@@ -465,7 +465,7 @@ function renderSidebar() {
   if (!list.length) { el.innerHTML = '<div class="no-results">No brands found</div>'; return; }
   el.innerHTML = list.map(function(b) {
     var r = rules[b];
-    var sp = typeof (r && r.spiff_rate) === 'number' ? '<span class="badge-spiff">' + (r.spiff_rate * 100).toFixed(1) + '%</span>' : '';
+    var spv = parseFloat(r && r.spiff_rate); var sp = (!isNaN(spv) && spv > 0) ? '<span class="badge-spiff">' + (spv * 100).toFixed(1) + '%</span>' : '';
     var w  = isWarn(b) ? '<span class="badge-warn">\u26a0</span>' : '';
     return '<div class="brand-item' + (b === selected ? ' active' : '') + '" onclick="selectBrand(\'' + b + '\')">' +
            '<span class="brand-name">' + b + '</span><div class="brand-badges">' + w + sp + '</div></div>';
@@ -517,9 +517,12 @@ function renderChangelog() {
 
 function isWarn(b) { return ((rules[b] && rules[b].notes) || '').toUpperCase().includes('ATTENTION'); }
 
-function fmtVal(val) {
+function fmtVal(val, key) {
   if (val === null || val === undefined || val === '') return '<span class="val-null">\u2014</span>';
   if (typeof val === 'number') return '<span class="val-pct">' + (val * 100).toFixed(1) + '%</span>';
+  // If it looks like a decimal rate (e.g. "0.044") show as percentage
+  var n = parseFloat(val);
+  if (!isNaN(n) && n > 0 && n < 1 && String(val).match(/^0\.\d+$/)) return '<span class="val-pct">' + (n * 100).toFixed(1) + '%</span>';
   var s = String(val);
   if (/[*/+\-]/.test(s) && !/^[A-Z_]+$/.test(s)) return '<span class="val-formula">' + s + '</span>';
   return '<span class="val-col">' + s + '</span>';
@@ -556,15 +559,26 @@ function cancelEdit() { editMode = false; renderDetail(); }
 
 function updateField(key, val) {
   var n = parseFloat(val);
-  editData[key] = val === '' ? null : (!isNaN(n) && String(n) === val.trim()) ? n : val;
+  if (key === 'spiff_rate') {
+    editData[key] = val === '' ? null : isNaN(n) ? null : n;
+  } else {
+    editData[key] = val === '' ? null : (!isNaN(n) && String(n) === val.trim()) ? n : val;
+  }
 }
 
 function saveEdit() {
   FIELDS.forEach(function(f) {
     var el = document.getElementById('edit-' + f.key);
     if (!el) return;
-    var v = el.value.trim(), n = parseFloat(v);
-    editData[f.key] = v === '' ? null : (!isNaN(n) && String(n) === v) ? n : v;
+    var v = el.value.trim();
+    if (v === '') { editData[f.key] = null; return; }
+    var n = parseFloat(v);
+    // Always save spiff_rate as a number
+    if (f.key === 'spiff_rate') {
+      editData[f.key] = isNaN(n) ? null : n;
+    } else {
+      editData[f.key] = (!isNaN(n) && String(n) === v) ? n : v;
+    }
   });
   rules[selected] = JSON.parse(JSON.stringify(editData));
   editMode = false;
@@ -742,6 +756,11 @@ function buildNamespace(row, cm) {
       ns[k] = isNaN(v) ? null : v;
     } else { ns[k] = null; }
   });
+  // Also map every column by its lowercase name so formulas like "COST" resolve directly
+  Object.keys(row).forEach(function(col) {
+    var v = parseFloat(String(row[col]).replace(/[$,\s]/g, ''));
+    if (!isNaN(v)) ns[col.toLowerCase().replace(/\s+/g,'_')] = v;
+  });
   return ns;
 }
 
@@ -760,7 +779,13 @@ function calcRow(row, br, cm) {
   out['_L2'] = calc(br.l2); ns.l2 = out['_L2'];
   out['_L3'] = calc(br.l3); ns.l3 = out['_L3'];
   out['_L4'] = calc(br.l4);
-  out['_COST'] = calc(br.cost) || ns.cost; ns.cost = out['_COST'];
+  out['_COST'] = calc(br.cost) || ns.cost;
+  // Fallback: if cost is still null, read directly from the mapped cost column
+  if (out['_COST'] == null && cm.cost && row[cm.cost] !== undefined && row[cm.cost] !== '') {
+    var rawCost = parseFloat(String(row[cm.cost]).replace(/[$,\s]/g, ''));
+    if (!isNaN(rawCost)) out['_COST'] = rawCost;
+  }
+  ns.cost = out['_COST'];
   out['_L3_COST'] = calc(br.l3_cost);
   out['_PREF'] = br.pref || null;
   out['_PREF_COST'] = calc(br.pref_cost);
