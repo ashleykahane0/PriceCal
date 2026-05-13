@@ -701,7 +701,7 @@ function onBrandChange() {
   if (r.l3) parts.push('L3=' + r.l3);
   if (r.l4) parts.push('L4=' + r.l4);
   if (r.cost) parts.push('Cost=' + r.cost);
-  if (typeof r.spiff_rate === 'number') parts.push('SPIFF=' + (r.spiff_rate * 100).toFixed(1) + '%');
+  var sr = parseFloat(r.spiff_rate); if (!isNaN(sr) && sr > 0) parts.push('SPIFF=' + (sr * 100).toFixed(1) + '%');
   el.style.display = '';
   el.innerHTML = '<strong style="color:var(--blue)">' + procBrand + ':</strong> ' + parts.join(' \xb7 ') + (r.notes ? '<br><span style="color:var(--amber)">' + r.notes + '</span>' : '');
   clearPreview();
@@ -764,7 +764,7 @@ function calcRow(row, br, cm) {
   out['_L3_COST'] = calc(br.l3_cost);
   out['_PREF'] = br.pref || null;
   out['_PREF_COST'] = calc(br.pref_cost);
-  out['_SPIFF'] = typeof br.spiff_rate === 'number' ? br.spiff_rate : null;
+  var spiffVal = parseFloat(br.spiff_rate); out['_SPIFF'] = (!isNaN(spiffVal) && spiffVal > 0) ? spiffVal : null;
   out['_SPIFF_AMT'] = (out['_SPIFF'] != null && out['_COST'] != null) ? out['_SPIFF'] * out['_COST'] : null;
   return out;
 }
