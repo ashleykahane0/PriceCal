@@ -339,8 +339,8 @@ function resetSetup() {
 function setSyncState(state, label) {
   var dot = document.getElementById('sync-dot');
   var lbl = document.getElementById('sync-label');
-  dot.className = 'sync-dot' + (state === 'live' ? ' live' : state === 'syncing' ? ' syncing' : state === 'err' ? ' err' : '');
-  lbl.textContent = label;
+  if (dot) dot.className = 'sync-dot' + (state === 'live' ? ' live' : state === 'syncing' ? ' syncing' : state === 'err' ? ' err' : '');
+  if (lbl) lbl.textContent = label;
 }
 
 function loadFromCloud() {
@@ -432,7 +432,8 @@ function forceSync() { loadFromCloud(); toast('Refreshing from cloud\u2026'); }
 // ── Init ──────────────────────────────────────────────────
 function init() {
   // Credentials are baked in — no setup needed for anyone
-  document.getElementById('setup-overlay').style.display = 'none';
+  var overlay = document.getElementById('setup-overlay');
+  if (overlay) overlay.style.display = 'none';
   try {
     var c = JSON.parse(localStorage.getItem(LS_CACHE) || 'null');
     if (c) { rules = c.rules; changelog = c.changelog; render(); }
@@ -448,8 +449,10 @@ function render() {
 function updateCounts() {
   var total = Object.keys(rules).length;
   var warns = Object.keys(rules).filter(function(b) { return isWarn(b); }).length;
-  document.getElementById('brand-count').textContent = total + ' brands \xb7 live shared';
-  document.getElementById('warn-count').textContent = warns;
+  var bc = document.getElementById('brand-count');
+  var wc = document.getElementById('warn-count');
+  if (bc) bc.textContent = total + ' brands \xb7 live shared';
+  if (wc) wc.textContent = warns;
 }
 
 function renderSidebar() {
